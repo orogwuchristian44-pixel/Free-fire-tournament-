@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FF Casual Squad Tournament</title>
+    <style>
+        body { font-family: Arial; margin:20px; background:#f5f5f5; }
+        h1,h2,h3 { color:#ff4500; }
+        section { background:#fff; padding:15px; margin-bottom:20px; border-radius:8px; box-shadow:0 0 5px #ccc; }
+        input, select, button { padding:8px; margin:5px 0; display:block; }
+        button { background:#ff4500; color:#fff; border:none; cursor:pointer; }
+        button:hover { background-color:#e03e00; }
+        li { margin-bottom:5px; }
+        img.screenshot { max-width:150px; margin:5px; border:1px solid #ccc; border-radius:5px; }
+        .hidden { display:none; }
+        .admin-section { background:#ffe0e0; }
+        #gallery { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+        #gallery div { text-align:center; border:1px solid #ccc; padding:5px; border-radius:5px; }
+    </style>
+</head>
+<body>
+    <h1>Free Fire Casual Squad Tournament</h1>
+
+    <!-- Admin Login -->
+    <section id="admin-login-section" class="admin-section">
+        <h2>Admin Login</h2>
+        <input type="password" id="adminPassword" placeholder="Enter Admin Password">
+        <button onclick="loginAdmin()">Login</button>
+        <p id="adminLoginMsg" style="color:red;"></p>
+    </section>
+
+    <!-- Admin Dashboard -->
+    <section id="admin-dashboard" class="admin-section hidden">
+        <h2>Admin Dashboard</h2>
+
+        <!-- Place Room UID -->
+        <div>
+            <h3>Place Room UID</h3>
+            <input type="text" id="adminRoomUid" placeholder="Enter Room UID">
+            <button onclick="adminPlaceRoomUid()">Place Room UID</button>
+            <p id="roomMsg" style="color:green;"></p>
+        </div>
+
+        <!-- Payment Screenshots Gallery -->
+        <div>
+            <h3>Verify Squad Payments</h3>
+            <div id="gallery"></div>
+        </div>
+    </section>
+
+    <!-- Tournament Info -->
+    <section>
+        <h2>Current Tournament: Round <span id="currentRound">1</span></h2>
+        <p>Max 12 squads per round. Multiple rounds supported.</p>
+        <p>Room UID: <span id="currentRoomDisplay">Not set</span></p>
+    </section>
+
+    <!-- Registration: Squad leader uploads payment screenshot -->
+    <section id="register-section">
+        <h2>Register Squad / Upload Payment Screenshot</h2>
+        <p>
+            Send your payment screenshot to this WhatsApp/Phone number before uploading: 
+            <strong id="adminPhone">09136478906</strong>
+            <button onclick="copyPhone()">Copy</button>
+        </p>
+        <input type="text" id="squadName" placeholder="Squad Name">
+        <input type="text" id="captainName" placeholder="Captain Name">
+        <input type="text" id="captainPhone" placeholder="Captain Phone">
+        <input type="file" id="receipt" accept="image/*">
+        <button onclick="registerSquad()">Register Squad</button>
+        <p id="regWarning" style="color:red;"></p>
+    </section>
+
+    <!-- Registered squads -->
+    <section id="squads-list">
+        <h2>Registered Squads</h2>
+        <ul id="squadUl"></ul>
+    </section>
+
+    <!-- Submit results -->
+    <section id="result-section">
+        <h2>Submit Result (Captain Only)</h2>
+        <select id="selectSquad"></select>
+        <input type="number" id="kills" placeholder="Kills" min="0">
+        <input type="number" id="placement" placeholder="Placement" min="1" max="12">
+        <button onclick="submitResult()">Submit Result</button>
+    </section>
+
+    <!-- Winners -->
+    <section id="winners-section">
+        <h2>Leaderboard</h2>
+        <ol id="winnersList"></ol>
+    </section>
+
+    <section>
+        <button onclick="nextRound()">Start Next Round</button>
+    </section>
+
+    <script>
+        // ----------------- DATA -----------------
+        const adminPass = "admin123"; // change to your secret
+        let isAdmin = false;
+        let squads = [];
+        let currentRound = 1;
+        const maxSquads = 12;
+        const prizePool = [20000, 12000, 8000];
+        let currentRoomUid = "";
+
+        // ----------------- COPY PHONE NUMBER -----------------
+        function copyPhone() {
+            const phone = document.getElementById('adminPhone').textContent;
+            navigator.clipboard.writeText(phone).then(() => {
+                alert("Phone number copied to clipboard: " + phone);
+            });
+        }
+
+        // ----------------- ADMIN LOGIN -----------------
+        function loginAdmin() {
+            const input = document.getElementById('adminPassword').value;
+            if(input === adminPass){
+                isAdmin = true;
+                document.getElementById('admin-dashboard').classList.remove('hidden');
+                document.getElementById('admin-login-section').classList.add('hidden');
+                updateGallery();
+            } else {
+                document.getElementById('adminLoginMsg').textContent = "Wrong password!";
+            }
+        }
+
+        // ----------------- REGISTER SQUAD -----------------
+        function registerSquad() {
+            if (squads.length >= maxSquads) {
+                document.getElementById('regWarning').textContent = "Max squads reached for this round!";
+                return;
+            }
+            const squadName = document.getElementById('squadName').value;
+            const captainName = document.getElementById('captainName').value;
+            const captainPhone = document.getElementById('captainPhone').value;
+            const receipt = document.getElementById('receipt').files[0];
+
+            if (!squadName || !captainName || !captainPhone || !receipt) {
+                alert("Fill all fields and upload payment screenshot!");
+                return;
+            }
+
+            const squad = {
+                id: Date.now(),
+                name: squadName,
+                captain: captainName,
+                phone: captainPhone,
+                receiptName: receipt.name,
+                receiptFile: URL.createObjectURL(receipt),
+                paymentVerified: false,
+                kills: 0,
+                placement: 0,
+                points: 0,
+                payout: 0
+            };
+
+            squads.push(squad);
+            updateSquadList();
+            updateSelectSquad();
+            updateGallery();
+            alert("Squad Registered with payment screenshot!");
+        }
+
+        function updateSquadList() {
+            const ul = document.getElementById('squadUl');
+            ul.innerHTML = '';
+            squads.forEach(s => {
+                const li = document.createElement('li');
+                li.textContent = `${s.name} (Captain: ${s.captain}) - Payment Verified: ${s.paymentVerified}`;
+                ul.appendChild(li);
+            });
+        }
+
+        // ----------------- ADMIN DASHBOARD -----------------
+        function updateGallery() {
+            if(!isAdmin) return;
+            const gallery = document.getElementById('gallery');
+            gallery.innerHTML = '';
+            squads.forEach(s => {
+                if(!s.paymentVerified){
+                    const div = document.createElement('div');
+                    div.innerHTML = `
+                        <p>${s.name}</p>
+                        <img class="screenshot" src="${s.receiptFile}">
+                        <button onclick="verifyPayment(${s.id})">Verify Payment</button>
+                    `;
+                    gallery.appendChild(div);
+                }
+            });
+        }
+
+        function verifyPayment(id){
+            const squad = squads.find(s => s.id === id);
+            if(squad){
+                squad.paymentVerified = true;
+                updateGallery();
+                updateSquadList();
+                updateSelectSquad();
+            }
+        }
+
+        // ----------------- ADMIN ROOM UID -----------------
+        function adminPlaceRoomUid() {
+            if(!isAdmin) return;
+            const uid = document.getElementById('adminRoomUid').value.trim();
+            if(!uid){
+                alert("Enter a valid Room UID!");
+                return;
+            }
+            currentRoomUid = uid;
+            document.getElementById('roomMsg').textContent = `Room UID for Round ${currentRound}: ${uid}`;
+            document.getElementById('currentRoomDisplay').textContent = uid;
+            alert("Room UID placed. Squad leaders can now submit results!");
+        }
+
+        // ----------------- RESULTS -----------------
+        function updateSelectSquad() {
+            const select = document.getElementById('selectSquad');
+            select.innerHTML = '';
+            squads.filter(s => s.paymentVerified).forEach(s => {
+                const option = document.createElement('option');
+                option.value = s.id;
+                option.textContent = s.name;
+                select.appendChild(option);
+            });
+        }
+
+        function calculatePoints(kills, placement) {
+            const placementPoints = {1:20, 2:16, 3:12, 4:8};
+            return kills + (placementPoints[placement] || 5);
+        }
+
+        function submitResult() {
+            if (!currentRoomUid) {
+                alert("Admin has not placed Room UID yet!");
+                return;
+            }
+
+            const squadId = Number(document.getElementById('selectSquad').value);
+            const kills = Number(document.getElementById('kills').value);
+            const placement = Number(document.getElementById('placement').value);
+
+            if(kills < 0 || placement < 1 || placement > 12){
+                alert("Invalid kills or placement!");
+                return;
+            }
+
+            const squad = squads.find(s => s.id === squadId);
+            if(!squad) return;
+
+            squad.kills = kills;
+            squad.placement = placement;
+            squad.points = calculatePoints(kills, placement);
+
+            displayLeaderboard();
+        }
+
+        function displayLeaderboard(){
+            const winnersList = document.getElementById('winnersList');
+            winnersList.innerHTML = '';
+            const topSquads = squads.filter(s => s.points > 0)
+                .sort((a,b) => b.points - a.points)
+                .slice(0,3);
+            topSquads.forEach((s,i) => {
+                s.payout = prizePool[i] || 0;
+                const li = document.createElement('li');
+                li.textContent = `Round ${currentRound}: ${s.name} - Points: ${s.points} - Payout: ₦${s.payout} - Room UID: ${currentRoomUid}`;
+                winnersList.appendChild(li);
+            });
+        }
+
+        function nextRound(){
+            currentRound++;
+            document.getElementById('currentRound').textContent = currentRound;
+            squads.forEach(s => {
+                s.kills = 0; s.placement = 0; s.points = 0; s.payout = 0; s.paymentVerified = false;
+            });
+            currentRoomUid = "";
+            document.getElementById('currentRoomDisplay').textContent = "Not set";
+            updateGallery();
+            updateSquadList();
+            updateSelectSquad();
+            displayLeaderboard();
+            alert("New round started. Admin must verify payments and place Room UID.");
+        }
+    </script>
+</body>
+</html>
